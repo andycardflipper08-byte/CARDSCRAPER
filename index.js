@@ -15,26 +15,35 @@ app.get('/sales', async (req, res) => {
 
     const page = await browser.newPage();
     await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+    await page.setViewport({ width: 1280, height: 800 });
 
     const searchUrl = `https://www.cardladder.com/cards/search?q=${encodeURIComponent(card + " PSA " + grade)}`;
-    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 20000 });
 
+    // Wait for results to load
+    await new Promise(r => setTimeout(r, 3000));
+
+    // Click first card result
     const firstCard = await page.$('a[href*="/cards/"]');
     if (firstCard) {
       await firstCard.click();
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 });
+      await new Promise(r => setTimeout(r, 3000));
     }
 
+    // Dump all text containing $ signs
     const data = await page.evaluate(() => {
-      const prices = [...document.querySelectorAll('[class*="price"], [class*="sale"]')]
-        .map(el => el.innerText.trim())
-        .filter(t => t.includes('$'))
-        .slice(0, 30);
+      const allText = document.body.innerText;
+      const priceMatches = allText.match(/\$[\d,]+\.?\d*/g) || [];
+      const prices = priceMatches
+        .map(p => parseFloat(p.replace(/[$,]/g, '')))
+        .filter(p => p > 1 && p < 500000);
 
       return {
-        lastSale : prices[0] || "N/A",
-        avg30    : prices.slice(0, 10).join(', ') || "N/A",
-        avg90    : prices.slice(0, 30).join(', ') || "N/A"
+        lastSale : prices.length > 0 ? "$" + prices[0].toFixed(2) : "N/A",
+        avg30    : prices.length > 0 ? "$" + (prices.slice(0,10).reduce((a,b)=>a+b,0)/Math.min(prices.length,10)).toFixed(2) : "N/A",
+        avg90    : prices.length > 0 ? "$" + (prices.slice(0,30).reduce((a,b)=>a+b,0)/Math.min(prices.length,30)).toFixed(2) : "N/A",
+        raw      : priceMatches.slice(0, 10)
       };
     });
 
